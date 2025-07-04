@@ -5,7 +5,28 @@ import re
 from typing import List, Union
 from inspect import cleandoc
 import sys
+from enum import StrEnum
 from mdutils.mdutils import MdUtils
+
+
+class Columns(StrEnum):
+    """
+    Enum for the columns that can be included in the argument table.
+    This allows for easy selection of which columns to include.
+    """
+
+    SHORT_OPT = "short_opt"
+    LONG_OPT = "long_opt"
+    DEFAULT = "default"
+    HELP = "help"
+
+
+AllColumns = [
+    Columns.SHORT_OPT,
+    Columns.LONG_OPT,
+    Columns.DEFAULT,
+    Columns.HELP,
+]
 
 
 def inline_code(text: str) -> str:
@@ -52,11 +73,14 @@ def _add_usage_section(md_file: MdUtils, parser: _argparse.ArgumentParser) -> No
 
 
 def _format_action_for_table_row(
-    action: _argparse.Action, parser: _argparse.ArgumentParser
+    action: _argparse.Action,
+    parser: _argparse.ArgumentParser,
+    cols: List[Columns] = Columns,
 ) -> List[str]:
     """
-    Formats a single argparse.Action into a list of 4 strings for the arguments table.
+    Formats a single argparse.Action into a list of strings for the arguments table.
     Handles both optional and positional arguments based on action.option_strings.
+    Only includes columns specified in cols (if provided).
     """
     short_opt_str = ""
     long_opt_str = ""
@@ -113,46 +137,45 @@ def _format_action_for_table_row(
         formatter = parser._get_formatter()
         help_text_str = formatter._expand_help(action).replace("\n", " ")
 
-    return [short_opt_str, long_opt_str, default_cell_str, help_text_str]
+    # Map for column selection
+    col_map = {
+        Columns.SHORT_OPT: short_opt_str,
+        Columns.LONG_OPT: long_opt_str,
+        Columns.DEFAULT: default_cell_str,
+        Columns.HELP: help_text_str,
+    }
+
+    return [col_map[c.value] for c in cols]
 
 
-def _build_arguments_table_data(parser: _argparse.ArgumentParser) -> List[str]:
-    table_rows_data: List[List[str]] = (
-        []
-    )  # Stores lists of 4 strings (each list is a row)
+def _build_arguments_table_data(
+    parser: _argparse.ArgumentParser, cols=AllColumns
+) -> List[str]:
+    table_rows_data: List[List[str]] = []
     seen_action_ids = set()
 
-    # First Pass (Optionals): Iterate through parser._option_string_actions.keys()
-    # to match original iteration behavior for optionals.
+    # First Pass (Optionals)
     for option_string_key in parser._option_string_actions.keys():
         action = parser._option_string_actions[option_string_key]
-
         if id(action) in seen_action_ids:
-            continue
-        if isinstance(
-            action, _argparse._SubParsersAction
-        ):  # Skip subparser actions themselves
-            continue
-
-        # This pass is primarily for optionals.
-        # _format_action_for_table_row handles based on action.option_strings
-        table_rows_data.append(_format_action_for_table_row(action, parser))
-        seen_action_ids.add(id(action))
-
-    # Second Pass (Positionals): Iterate through parser._actions
-    for action in parser._actions:
-        if id(action) in seen_action_ids:  # Already processed
             continue
         if isinstance(action, _argparse._SubParsersAction):
             continue
+        table_rows_data.append(_format_action_for_table_row(action, parser, cols=cols))
+        seen_action_ids.add(id(action))
 
-        # If it has no option_strings, it's a positional argument
+    # Second Pass (Positionals)
+    for action in parser._actions:
+        if id(action) in seen_action_ids:
+            continue
+        if isinstance(action, _argparse._SubParsersAction):
+            continue
         if not action.option_strings:
-            table_rows_data.append(_format_action_for_table_row(action, parser))
-            # No need to add to seen_action_ids here as this is the final pass for this action
+            table_rows_data.append(
+                _format_action_for_table_row(action, parser, cols=cols)
+            )
 
-    # Flatten the table_rows_data with the header
-    final_table_list: List[str] = ["short", "long", "default", "help"]
+    final_table_list: List[str] = cols.copy()
     for row in table_rows_data:
         final_table_list.extend(row)
 
@@ -235,7 +258,7 @@ def gen_help(lines: List) -> None:
         )
 
 
-def md_help(parser: _argparse.ArgumentParser) -> None:
+def md_help(parser: _argparse.ArgumentParser, cols: List[Columns] = AllColumns) -> None:
     md_file = _create_md_file_object(parser)
 
     if parser.prog and md_file.title == parser.prog:
@@ -245,7 +268,7 @@ def md_help(parser: _argparse.ArgumentParser) -> None:
     _add_parser_epilog(md_file, parser)
     _add_usage_section(md_file, parser)
 
-    main_table_data = _build_arguments_table_data(parser)
+    main_table_data = _build_arguments_table_data(parser, cols=cols)
 
     if len(main_table_data) > 4:
         _add_arguments_table(md_file, main_table_data, is_subcommand=False)
@@ -280,8 +303,8 @@ def md_help(parser: _argparse.ArgumentParser) -> None:
 
             _add_usage_section(md_file, sub_parser_instance)
 
-            sub_table_data = _build_arguments_table_data(sub_parser_instance)
-            if len(sub_table_data) > 4:
+            sub_table_data = _build_arguments_table_data(sub_parser_instance, cols=cols)
+            if len(sub_table_data) > len(cols):
                 _add_arguments_table(md_file, sub_table_data, is_subcommand=True)
             else:
                 md_file.new_header(level=2, title="Arguments")
@@ -313,6 +336,14 @@ def main():
         "-f", "--files", help="files to convert", required=True, nargs="+"
     )
     parser.add_argument("-v", "--verbose", help="Be verbose", action="store_true")
+    parser.add_argument(
+        "-c",
+        "--cols",
+        help="Columns to include in the argument table. Allowed: short_opt, long_opt, default, help",
+        nargs="+",
+        choices=AllColumns,
+        default=None,
+    )
 
     args, unknown_args = parser.parse_known_args(script_argv)
     logging_format = (

@@ -1,4 +1,3 @@
-
 app
 ===
 
@@ -15,7 +14,7 @@ usage: app [-h] [--verbose] {command1,command2} ...
 ```
 # Arguments
 
-|short|long|default|help|
+|short_opt|long_opt|default|help|
 | :--- | :--- | :--- | :--- |
 |`-h`|`--help`||show this help message and exit|
 ||`--verbose`||Enable verbose output.|
@@ -37,7 +36,7 @@ usage: app command1 [-h] [--opt1 OPT1] pos1
 ```
 ## Arguments
 
-|short|long|default|help|
+|short_opt|long_opt|default|help|
 | :--- | :--- | :--- | :--- |
 |`-h`|`--help`||show this help message and exit|
 ||`--opt1`|`10`|Option for command1.|
@@ -60,7 +59,7 @@ usage: app command2 [-h] [--flag]
 ```
 ## Arguments
 
-|short|long|default|help|
+|short_opt|long_opt|default|help|
 | :--- | :--- | :--- | :--- |
 |`-h`|`--help`||show this help message and exit|
 ||`--flag`||A boolean flag for command2.|
